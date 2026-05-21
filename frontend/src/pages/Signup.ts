@@ -1,6 +1,6 @@
-import firebaseui from 'firebaseui';
+import * as firebaseui from 'firebaseui';
 import 'firebaseui/dist/firebaseui.css';
-import { GoogleAuthProvider, OAuthProvider } from 'firebase/auth';
+import { GoogleAuthProvider } from 'firebase/auth';
 import { auth } from '../config/firebase';
 
 const uiConfig = {
@@ -13,30 +13,36 @@ const uiConfig = {
 
 export const renderSignup = (root: HTMLElement) => {
   root.innerHTML = `
-    <main class="min-h-screen flex items-center justify-center bg-slate-950 px-4 py-8 text-slate-100">
-      <section class="w-full max-w-4xl overflow-hidden rounded-3xl border border-white/10 bg-white/5 shadow-2xl backdrop-blur">
-        <div class="grid gap-0 lg:grid-cols-[1.1fr_0.9fr]">
-          <div class="flex flex-col justify-between bg-gradient-to-br from-cyan-500 via-sky-500 to-blue-600 p-10 text-white">
-            <div>
-              <p class="text-sm font-semibold uppercase tracking-[0.3em] text-white/80">BlockHost</p>
-              <h1 class="mt-6 max-w-md text-4xl font-semibold leading-tight">
-                Sign in with FirebaseUI instead of a custom password form.
-              </h1>
-              <p class="mt-4 max-w-md text-base text-white/85">
-                Pick a provider and let Firebase handle the auth flow.
-              </p>
-            </div>
-            <p class="mt-12 text-sm text-white/70">
-              Sign-in will take you to the dashboard after success.
-            </p>
-          </div>
-          <div class="bg-slate-950/80 p-8 sm:p-10">
-            <div class="mx-auto flex w-full max-w-md flex-col">
-              <div id="firebaseui-auth-container"></div>
-            </div>
+    <main class="min-h-screen bg-gradient-to-br from-slate-950 via-sky-950 to-slate-900 relative overflow-hidden">
+      <!-- background blobs -->
+      <div class="absolute -top-24 -left-24 w-80 h-80 rounded-full blur-3xl opacity-30 bg-sky-400"></div>
+      <div class="absolute -bottom-28 -right-24 w-96 h-96 rounded-full blur-3xl opacity-20 bg-cyan-300"></div>
+      <div class="absolute top-28 right-16 w-64 h-64 rounded-full blur-3xl opacity-20 bg-blue-500"></div>
+      <div class="absolute -bottom-8 left-10 w-56 h-56 rounded-full blur-3xl opacity-10 bg-emerald-300"></div>
+
+      <div class="flex min-h-screen items-center justify-center px-4 py-12">
+        <div class="relative z-10 w-full max-w-md rounded-3xl bg-white/10 backdrop-blur-2xl border border-white/20 shadow-2xl shadow-sky-950/50 p-8">
+          <h1 class="text-3xl font-bold text-white text-center">Welcome to BlockHost</h1>
+          <p class="mt-3 text-center text-sm leading-6 text-sky-100/75">Back up and manage your Minecraft worlds in the cloud, so you can keep playing across devices.</p>
+
+          <div class="mt-8">
+            <style>
+              /* Minimal overrides for FirebaseUI to match theme */
+              .firebaseui-idp-button {
+                background: rgba(56,189,248,0.95) !important; /* sky-400 */
+                color: #061126 !important;
+                border-radius: 1rem !important;
+                min-height: 3rem !important;
+                box-shadow: 0 8px 20px rgba(14,165,233,0.12) !important;
+                border: 1px solid rgba(255,255,255,0.06) !important;
+              }
+              .firebaseui-idp-button .firebaseui-idp-text, .firebaseui-idp-button .firebaseui-idp-icon { color: #061126 !important; }
+              .firebaseui-card-footer, .firebaseui-tos, .firebaseui-link { color: rgba(203,213,225,0.85) !important; }
+            </style>
+            <div id="firebaseui-auth-container"></div>
           </div>
         </div>
-      </section>
+      </div>
     </main>
   `;
 

@@ -1,3 +1,4 @@
+import './index.css';
 import { renderSignup } from './pages/Signup';
 
 const root = document.querySelector<HTMLDivElement>('#app');

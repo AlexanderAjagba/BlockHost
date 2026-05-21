@@ -1,0 +1,22 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 128 128" shape-rendering="crispEdges" aria-label="BlockHost logo">
+  <g transform="translate(8,8)">
+    <rect x="8" y="30" width="80" height="30" rx="6" fill="#38BDF8"/>
+    <rect x="0" y="36" width="24" height="20" rx="4" fill="#38BDF8"/>
+    <rect x="72" y="34" width="24" height="22" rx="4" fill="#38BDF8"/>
+    <rect x="20" y="18" width="56" height="20" rx="6" fill="#CFF2FF"/>
+    <rect x="28" y="14" width="40" height="12" rx="4" fill="#A6E6FF"/>
+    <rect x="6" y="40" width="88" height="18" rx="6" fill="#9EE8FF" opacity="0.85"/>
+    <g fill="none" stroke="#0F172A" stroke-width="2">
+      <path d="M8 46 h80 v12 h-80 z" />
+      <path d="M20 30 h56 v-10" />
+    </g>
+  </g>
+
+  <g transform="translate(48,56)">
+    <polygon points="16,0 48,0 64,16 32,16" fill="#22C55E" stroke="#0F172A" stroke-width="1.5"/>
+    <polygon points="0,16 32,16 16,32 -16,32" transform="translate(16,0)" fill="#6B3F24" stroke="#0F172A" stroke-width="1.5"/>
+    <polygon points="32,16 64,16 48,32 16,32" transform="translate(16,0)" fill="#8B5E3C" stroke="#0F172A" stroke-width="1.5"/>
+    <rect x="14" y="-2" width="36" height="6" fill="#16A34A" opacity="0.9" transform="translate(0,0)"/>
+    <ellipse cx="32" cy="44" rx="28" ry="6" fill="#0F172A" opacity="0.12"/>
+  </g>
+</svg>
