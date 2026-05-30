@@ -1,6 +1,6 @@
 import * as firebaseui from 'firebaseui';
 import 'firebaseui/dist/firebaseui.css';
-import { GoogleAuthProvider } from 'firebase/auth';
+import { GoogleAuthProvider, getAuth } from 'firebase/auth';
 import { auth } from '../config/firebase';
 
 const uiConfig = {
@@ -49,6 +49,16 @@ export const renderSignup = (root: HTMLElement) => {
   const firebaseuiAny = firebaseui as any;
   const existingUi = firebaseuiAny.auth.AuthUI.getInstance();
   const ui = existingUi ?? new firebaseuiAny.auth.AuthUI(auth);
+  try {
+    let result = await signInWithPopup(getAuth(), new GoogleAuthProvider());
+  }catch (error) {
+    if (error.code === "auth/account-exists-with-different-credential") {
+      alert("An account already exists with the same email address but different sign-in credentials. Please use the original sign-in method associated with this email.");
+    } else {
+      console.error("Error during sign-in:", error);
+      alert("An error occurred during sign-in. Please try again.");
+    } 
+
 
   ui.start('#firebaseui-auth-container', uiConfig);
 };
