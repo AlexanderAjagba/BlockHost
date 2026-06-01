@@ -1,36 +1,30 @@
-declare module 'firebase/app' {
-  export function initializeApp(config: Record<string, unknown>): unknown;
-}
-
-declare module 'firebase/auth' {
-  export const GoogleAuthProvider: {
-    PROVIDER_ID: string;
-  };
-
-  export class OAuthProvider {
-    constructor(providerId: string);
-  }
-
-  export function getAuth(app?: unknown): unknown;
-}
-
-declare module 'firebase/firestore' {
-  export function getFirestore(app?: unknown): unknown;
-}
-
 declare module 'firebaseui' {
-  const firebaseui: {
-    auth: {
-      AuthUI: {
-        getInstance(): any;
-        new (auth: unknown): {
-          start(selector: string, config: Record<string, unknown>): void;
-        };
-      };
-    };
-  };
+  import type { Auth } from 'firebase/auth';
 
-  export default firebaseui;
+  export namespace auth {
+    interface AuthUIError {
+      code?: string;
+      message?: string;
+    }
+
+    interface Config {
+      signInFlow?: 'popup' | 'redirect';
+      signInOptions: Array<string | Record<string, unknown>>;
+      tosUrl?: string;
+      privacyPolicyUrl?: string;
+      callbacks?: {
+        signInSuccessWithAuthResult?: () => boolean;
+        signInFailure?: (error: AuthUIError) => Promise<void> | void;
+        uiShown?: () => void;
+      };
+    }
+
+    class AuthUI {
+      constructor(auth: Auth);
+      static getInstance(): AuthUI | null;
+      start(selector: string, config: Config): void;
+    }
+  }
 }
 
 declare module 'firebaseui/dist/firebaseui.css';

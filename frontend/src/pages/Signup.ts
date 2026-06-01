@@ -1,14 +1,55 @@
 import * as firebaseui from 'firebaseui';
 import 'firebaseui/dist/firebaseui.css';
-import { GoogleAuthProvider, getAuth } from 'firebase/auth';
+import { GoogleAuthProvider, OAuthProvider, onAuthStateChanged, type User } from 'firebase/auth';
 import { auth } from '../config/firebase';
+import { renderDashboard } from './Dashboard';
 
-const uiConfig = {
+const microsoftProvider = new OAuthProvider('microsoft.com');
+
+const showMessage = (message: string, isError = false) => {
+  const messageEl = document.querySelector<HTMLParagraphElement>('#auth-message');
+
+  if (!messageEl) {
+    return;
+  }
+
+  messageEl.textContent = message;
+  messageEl.className = `mt-4 min-h-5 text-center text-sm ${isError ? 'text-red-200' : 'text-sky-100/75'}`;
+};
+
+const showLoading = (isLoading: boolean) => {
+  const loadingEl = document.querySelector<HTMLParagraphElement>('#auth-loading');
+  const authContainer = document.querySelector<HTMLDivElement>('#firebaseui-auth-container');
+
+  if (loadingEl) {
+    loadingEl.hidden = !isLoading;
+  }
+
+  if (authContainer) {
+    authContainer.setAttribute('aria-busy', String(isLoading));
+  }
+};
+
+const goToDashboard = (root: HTMLElement, user: User) => {
+  window.history.replaceState({}, '', '/dashboard');
+  renderDashboard(root, user);
+};
+
+const uiConfig: firebaseui.auth.Config = {
   signInFlow: 'popup',
-  signInSuccessUrl: '/dashboard',
-  signInOptions: [GoogleAuthProvider.PROVIDER_ID, 'microsoft.com'],
+  signInOptions: [GoogleAuthProvider.PROVIDER_ID, microsoftProvider.providerId],
   tosUrl: '/terms',
   privacyPolicyUrl: '/privacy',
+  callbacks: {
+    signInSuccessWithAuthResult: () => false,
+    signInFailure: async (error) => {
+      showLoading(false);
+      showMessage(error.message || 'Sign in failed. Please try again.', true);
+    },
+    uiShown: () => {
+      showLoading(false);
+    },
+  },
 };
 
 export const renderSignup = (root: HTMLElement) => {
@@ -39,26 +80,32 @@ export const renderSignup = (root: HTMLElement) => {
               .firebaseui-idp-button .firebaseui-idp-text, .firebaseui-idp-button .firebaseui-idp-icon { color: #061126 !important; }
               .firebaseui-card-footer, .firebaseui-tos, .firebaseui-link { color: rgba(203,213,225,0.85) !important; }
             </style>
+            <p id="auth-loading" class="text-center text-sm text-sky-100/75">Checking sign-in status...</p>
             <div id="firebaseui-auth-container"></div>
+            <p id="auth-message" class="mt-4 min-h-5 text-center text-sm text-sky-100/75" role="status" aria-live="polite"></p>
           </div>
         </div>
       </div>
     </main>
   `;
 
-  const firebaseuiAny = firebaseui as any;
-  const existingUi = firebaseuiAny.auth.AuthUI.getInstance();
-  const ui = existingUi ?? new firebaseuiAny.auth.AuthUI(auth);
-  try {
-    let result = await signInWithPopup(getAuth(), new GoogleAuthProvider());
-  }catch (error) {
-    if (error.code === "auth/account-exists-with-different-credential") {
-      alert("An account already exists with the same email address but different sign-in credentials. Please use the original sign-in method associated with this email.");
-    } else {
-      console.error("Error during sign-in:", error);
-      alert("An error occurred during sign-in. Please try again.");
-    } 
+  showLoading(true);
 
+  const unsubscribe = onAuthStateChanged(
+    auth,
+    (user) => {
+      if (user) {
+        unsubscribe();
+        goToDashboard(root, user);
+        return;
+      }
 
-  ui.start('#firebaseui-auth-container', uiConfig);
+      const ui = firebaseui.auth.AuthUI.getInstance() ?? new firebaseui.auth.AuthUI(auth);
+      ui.start('#firebaseui-auth-container', uiConfig);
+    },
+    (error) => {
+      showLoading(false);
+      showMessage(error.message, true);
+    },
+  );
 };
