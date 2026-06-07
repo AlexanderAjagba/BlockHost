@@ -16,3 +16,18 @@ const S3 = new S3Client({
     secretAccessKey: SECRET_ACCESS_KEY,
   },
 });
+function storeFile(bucketName: string, key: string, body: Buffer | ReadableStream) {
+  const command = new PutObjectCommand({
+    Bucket: bucketName,
+    Key: key,
+    Body: body,
+  });
+  return S3.send(command);
+}
+function getFile(bucketName: string, key: string) {
+  const command = new GetObjectCommand({
+    Bucket: bucketName,
+    Key: key,
+  });
+  return S3.send(command);
+}

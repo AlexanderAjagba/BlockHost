@@ -1,0 +1,86 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum WorldVersionStatus {
+  PENDING
+  UPLOADED
+  FAILED
+  DELETED
+}
+
+model User {
+  id          String  @id @default(cuid())
+  firebaseUid String  @unique
+  email       String?
+  displayName String?
+  photoUrl    String?
+
+  worlds World[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([email])
+}
+
+model World {
+  id      String @id @default(cuid())
+  ownerId String
+
+  name        String
+  description String?
+
+  // Optional Minecraft metadata.
+  minecraftVersion String?
+  lastPlayedAt     DateTime?
+
+  owner    User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  versions WorldVersion[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Prevent the same user from having duplicate world names.
+  // You can remove this later if you want users to have duplicate names.
+  @@unique([ownerId, name])
+  @@index([ownerId])
+}
+
+model WorldVersion {
+  id      String @id @default(cuid())
+  worldId String
+
+  world World @relation(fields: [worldId], references: [id], onDelete: Cascade)
+
+  versionNumber Int
+
+  status WorldVersionStatus @default(PENDING)
+
+  // R2 metadata.
+  r2Bucket    String
+  r2ObjectKey String @unique
+
+  // File metadata.
+  fileName       String
+  contentType    String
+  sizeBytes      BigInt
+  checksumSha256 String?
+
+  // Useful later for restore/history UI.
+  notes String?
+
+  uploadedAt DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@unique([worldId, versionNumber])
+  @@index([worldId])
+  @@index([status])
+  @@index([createdAt])
+}
