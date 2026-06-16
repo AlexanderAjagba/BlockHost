@@ -6,7 +6,6 @@ export interface WorldVersionMetadata {
   fileName: string;
   contentType: string;
   sizeBytes: number;
-  objectKey: string;
   createdAt: string;
 }
 
@@ -16,13 +15,13 @@ export interface WorldVersionUploadInput {
   sizeBytes: number;
 }
 
-export interface CompleteWorldVersionUploadInput extends WorldVersionUploadInput {
-  objectKey: string;
+export interface CompleteWorldVersionUploadInput {
+  uploadId: string;
 }
 
 export interface WorldVersionUploadUrl {
+  uploadId: string;
   uploadUrl: string;
-  objectKey: string;
   expiresInSeconds: number;
   requiredHeaders: Record<string, string>;
 }
@@ -33,6 +32,12 @@ export interface WorldVersionDownloadUrl {
   fileName: string;
   contentType: string;
   sizeBytes: number;
+}
+
+export interface UploadProgress {
+  loadedBytes: number;
+  totalBytes: number;
+  percent: number;
 }
 
 interface ListWorldVersionsResponse {
@@ -76,16 +81,53 @@ export const uploadFileToSignedUrl = async (
   uploadUrl: string,
   file: File,
   requiredHeaders: Record<string, string>,
+  onProgress?: (progress: UploadProgress) => void,
 ): Promise<void> => {
-  const response = await fetch(uploadUrl, {
-    method: 'PUT',
-    body: file,
-    headers: requiredHeaders,
-  });
+  await new Promise<void>((resolve, reject) => {
+    const request = new XMLHttpRequest();
 
-  if (!response.ok) {
-    throw new Error(`R2 upload failed with status ${response.status}.`);
-  }
+    request.open('PUT', uploadUrl);
+
+    for (const [name, value] of Object.entries(requiredHeaders)) {
+      request.setRequestHeader(name, value);
+    }
+
+    request.upload.addEventListener('progress', (event) => {
+      const totalBytes = event.lengthComputable ? event.total : file.size;
+      const loadedBytes = event.loaded;
+      const percent = totalBytes > 0 ? Math.min(100, Math.round((loadedBytes / totalBytes) * 100)) : 0;
+
+      onProgress?.({
+        loadedBytes,
+        totalBytes,
+        percent,
+      });
+    });
+
+    request.addEventListener('load', () => {
+      if (request.status >= 200 && request.status < 300) {
+        onProgress?.({
+          loadedBytes: file.size,
+          totalBytes: file.size,
+          percent: 100,
+        });
+        resolve();
+        return;
+      }
+
+      reject(new Error(`Upload failed with status ${request.status}.`));
+    });
+
+    request.addEventListener('error', () => {
+      reject(new Error('Network error. Please check your connection and try again.'));
+    });
+
+    request.addEventListener('abort', () => {
+      reject(new Error('Upload was canceled.'));
+    });
+
+    request.send(file);
+  });
 };
 
 export const requestWorldVersionDownloadUrl = async (

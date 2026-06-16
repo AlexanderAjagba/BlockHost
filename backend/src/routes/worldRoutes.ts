@@ -1,10 +1,16 @@
 import { Router } from "express";
 import { requireAuth, type AuthenticatedRequest } from "../middleware/requireAuth";
-import { createWorldForFirebaseUser, listWorldsForFirebaseUser, type CreateWorldInput } from "../services/worldService";
+import {
+  createWorldForFirebaseUser,
+  listWorldsForFirebaseUser,
+  WorldNameConflictError,
+  type CreateWorldInput,
+} from "../services/worldService";
 import {
   createWorldVersionUploadUrl,
   WorldNotFoundError,
 } from "../services/worldVersionService";
+import { getErrorLogSummary } from "../utils/logging";
 import worldVersionRoutes from "./worldVersionRoutes";
 
 const router = Router();
@@ -95,8 +101,7 @@ router.get("/", requireAuth, async (req, res) => {
     const worlds = await listWorldsForFirebaseUser((req as AuthenticatedRequest).user.uid);
     res.json({ worlds });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown world list error.";
-    console.error("Failed to list worlds:", message);
+    console.error("Failed to list worlds:", getErrorLogSummary(error));
     res.status(500).json({ error: "Failed to list worlds." });
   }
 });
@@ -116,8 +121,12 @@ router.post("/", requireAuth, async (req, res) => {
     const world = await createWorldForFirebaseUser((req as AuthenticatedRequest).user, input);
     res.status(201).json(world);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unknown world create error.";
-    console.error("Failed to create world:", message);
+    if (error instanceof WorldNameConflictError) {
+      res.status(409).json({ error: error.message });
+      return;
+    }
+
+    console.error("Failed to create world:", getErrorLogSummary(error));
     res.status(500).json({ error: "Failed to create world." });
   }
 });
@@ -146,6 +155,7 @@ router.post("/:worldId/versions/upload-url", requireAuth, async (req, res) => {
       firebaseUid: (req as AuthenticatedRequest).user.uid,
       fileName: input.fileName,
       contentType: input.contentType,
+      sizeBytes: input.sizeBytes,
     });
     res.json(result);
   } catch (error) {
@@ -154,8 +164,7 @@ router.post("/:worldId/versions/upload-url", requireAuth, async (req, res) => {
       return;
     }
 
-    const message = error instanceof Error ? error.message : "Unknown signed upload URL error.";
-    console.error("Failed to create signed upload URL:", message);
+    console.error("Failed to create signed upload URL:", getErrorLogSummary(error));
     res.status(500).json({ error: "Failed to create signed upload URL." });
   }
 });

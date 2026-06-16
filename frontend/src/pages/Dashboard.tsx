@@ -21,6 +21,19 @@ const setStatus = (selector: string, message: string, isError = false) => {
   status.className = `mt-3 text-sm ${isError ? 'text-red-200' : 'text-emerald-200'}`;
 };
 
+const getFriendlyDashboardError = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : '';
+
+  if (message === 'A world with this name already exists.') {
+    return 'You already have a world with this name.';
+  }
+  if (message.includes('Failed to fetch') || message.includes('Network error')) {
+    return 'Network error. Please check your connection and try again.';
+  }
+
+  return message || 'Something went wrong. Please try again.';
+};
+
 const loadMe = async () => {
   setStatus('#backend-auth-status', 'Checking backend auth...');
 
@@ -48,6 +61,7 @@ const renderWorlds = (worlds: WorldMetadata[]) => {
 
   list.replaceChildren();
   emptyState.hidden = worlds.length > 0;
+  emptyState.textContent = 'Create your first world entry to start backing up Minecraft ZIP files.';
 
   for (const world of worlds) {
     const card = document.createElement('article');
@@ -102,9 +116,8 @@ const loadWorlds = async () => {
     renderWorlds(worlds);
     await updateWorldVersionWorlds(worlds);
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load worlds.';
     if (errorState) {
-      errorState.textContent = message;
+      errorState.textContent = getFriendlyDashboardError(error);
       errorState.hidden = false;
     }
   } finally {
@@ -157,8 +170,7 @@ const bindCreateWorldForm = () => {
       setStatus('#create-world-status', 'World created.');
       await loadWorlds();
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Failed to create world.';
-      setStatus('#create-world-status', message, true);
+      setStatus('#create-world-status', getFriendlyDashboardError(error), true);
     } finally {
       if (submitButton) {
         submitButton.disabled = false;
@@ -211,7 +223,7 @@ export const renderDashboard = (root: HTMLElement, user: User) => {
             </div>
             <p id="world-loading" class="mt-4 text-sm text-sky-100/75">Loading worlds...</p>
             <p id="world-error" class="mt-4 text-sm text-red-200" role="alert" hidden></p>
-            <p id="world-empty-state" class="mt-4 text-sm text-slate-400" hidden>No worlds yet.</p>
+            <p id="world-empty-state" class="mt-4 text-sm leading-6 text-slate-400" hidden>Create your first world entry to start backing up Minecraft ZIP files.</p>
             <div id="world-list" class="mt-4 grid gap-4"></div>
           </section>
         </div>
@@ -229,6 +241,9 @@ export const renderDashboard = (root: HTMLElement, user: User) => {
                 <input id="world-zip-file" type="file" accept=".zip,application/zip,application/x-zip-compressed" class="mt-1 block w-full text-sm text-slate-300 file:mr-3 file:rounded-md file:border-0 file:bg-sky-400 file:px-3 file:py-2 file:font-semibold file:text-slate-950" />
               </label>
               <button id="upload-world-submit" type="submit" class="w-full rounded-lg bg-sky-400 px-4 py-2 text-sm font-semibold text-slate-950 hover:bg-sky-300 disabled:cursor-wait disabled:opacity-60" disabled>Upload ZIP</button>
+              <div id="upload-progress-wrap" class="mt-3 h-2 overflow-hidden rounded-full bg-white/10" hidden>
+                <div id="upload-progress-bar" class="h-full w-0 bg-sky-400 transition-[width]"></div>
+              </div>
               <p id="upload-status" class="mt-3 text-sm text-sky-100/75" role="status" aria-live="polite"></p>
             </form>
 
@@ -236,7 +251,8 @@ export const renderDashboard = (root: HTMLElement, user: User) => {
               <h3 class="text-lg font-semibold">Uploaded versions</h3>
               <p id="version-loading" class="mt-4 text-sm text-sky-100/75" hidden>Loading versions...</p>
               <p id="version-error" class="mt-4 text-sm text-red-200" role="alert" hidden></p>
-              <p id="version-empty-state" class="mt-4 text-sm text-slate-400">Select a world to view its versions.</p>
+              <p id="download-status" class="mt-4 text-sm text-sky-100/75" role="status" aria-live="polite" hidden></p>
+              <p id="version-empty-state" class="mt-4 text-sm leading-6 text-slate-400">Select a world to view its backups.</p>
               <div id="version-list" class="mt-3"></div>
             </div>
           </div>

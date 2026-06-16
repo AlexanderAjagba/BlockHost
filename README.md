@@ -11,6 +11,13 @@ Cloud backup platform for storing and managing Minecraft single-player worlds.
 2. Run `docker compose up --build` from the project root.
 3. Frontend will be available on port `5173` and backend on port `4000`.
 
+## Cloudflare R2 CORS
+
+Direct browser uploads require the R2 bucket CORS policy to allow `PUT`
+requests from `http://localhost:5173` with the `Content-Type` header. Add the
+Firebase Hosting origin to the policy before deploying the frontend to
+production.
+
 ## Service Layout
 
 - `frontend/`: Vite + TypeScript app with Firebase Web SDK.

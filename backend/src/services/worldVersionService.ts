@@ -16,15 +16,13 @@ export interface CreateWorldVersionUploadUrlInput {
   firebaseUid: string;
   fileName: string;
   contentType: string;
+  sizeBytes: number;
 }
 
 export interface CompleteWorldVersionInput {
   worldId: string;
   firebaseUid: string;
-  objectKey: string;
-  fileName: string;
-  contentType: string;
-  sizeBytes: number;
+  uploadId: string;
 }
 
 export class WorldNotFoundError extends Error {
@@ -38,6 +36,13 @@ export class InvalidWorldVersionObjectKeyError extends Error {
   constructor() {
     super("objectKey does not belong to the authenticated user and world.");
     this.name = "InvalidWorldVersionObjectKeyError";
+  }
+}
+
+export class PendingWorldUploadNotFoundError extends Error {
+  constructor() {
+    super("Pending upload not found.");
+    this.name = "PendingWorldUploadNotFoundError";
   }
 }
 
@@ -86,6 +91,7 @@ const findOwnedWorld = async (worldId: string, firebaseUid: string) => {
     },
     select: {
       id: true,
+      ownerId: true,
     },
   });
 
@@ -102,7 +108,6 @@ const serializeWorldVersion = (version: {
   fileName: string;
   contentType: string;
   sizeBytes: bigint;
-  r2ObjectKey: string;
   createdAt: Date;
 }) => {
   return {
@@ -111,7 +116,6 @@ const serializeWorldVersion = (version: {
     fileName: version.fileName,
     contentType: version.contentType,
     sizeBytes: Number(version.sizeBytes),
-    objectKey: version.r2ObjectKey,
     createdAt: version.createdAt,
   };
 };
@@ -121,19 +125,34 @@ export const createWorldVersionUploadUrl = async ({
   firebaseUid,
   fileName,
   contentType,
+  sizeBytes,
 }: CreateWorldVersionUploadUrlInput) => {
   const world = await findOwnedWorld(worldId, firebaseUid);
 
-  const generatedVersionId = randomUUID();
-  const objectKey = `${getObjectKeyPrefix(firebaseUid, world.id)}${generatedVersionId}/${sanitizeFileName(fileName)}`;
+  const uploadId = randomUUID();
+  const objectKey = `${getObjectKeyPrefix(firebaseUid, world.id)}${uploadId}/${sanitizeFileName(fileName)}`;
+  const expiresAt = new Date(Date.now() + SIGNED_UPLOAD_EXPIRY_SECONDS * 1000);
   const uploadUrl = await createSignedUploadUrl({
     objectKey,
     contentType,
   });
 
+  await prisma.pendingWorldUpload.create({
+    data: {
+      id: uploadId,
+      userId: world.ownerId,
+      worldId: world.id,
+      objectKey,
+      fileName,
+      contentType,
+      sizeBytes: BigInt(sizeBytes),
+      expiresAt,
+    },
+  });
+
   return {
+    uploadId,
     uploadUrl,
-    objectKey,
     expiresInSeconds: SIGNED_UPLOAD_EXPIRY_SECONDS,
     requiredHeaders: {
       "Content-Type": contentType,
@@ -144,21 +163,56 @@ export const createWorldVersionUploadUrl = async ({
 export const completeWorldVersionUpload = async ({
   worldId,
   firebaseUid,
-  objectKey,
-  fileName,
-  contentType,
-  sizeBytes,
+  uploadId,
 }: CompleteWorldVersionInput) => {
   const world = await findOwnedWorld(worldId, firebaseUid);
 
-  if (!objectKey.startsWith(getObjectKeyPrefix(firebaseUid, world.id))) {
+  const pendingUpload = await prisma.pendingWorldUpload.findFirst({
+    where: {
+      id: uploadId,
+      worldId: world.id,
+      userId: world.ownerId,
+      user: {
+        firebaseUid,
+      },
+      world: {
+        id: world.id,
+        owner: {
+          firebaseUid,
+        },
+      },
+    },
+    select: {
+      id: true,
+      objectKey: true,
+      fileName: true,
+      contentType: true,
+      sizeBytes: true,
+      expiresAt: true,
+    },
+  });
+
+  if (!pendingUpload) {
+    throw new PendingWorldUploadNotFoundError();
+  }
+
+  if (pendingUpload.expiresAt.getTime() <= Date.now()) {
+    await prisma.pendingWorldUpload.delete({
+      where: {
+        id: pendingUpload.id,
+      },
+    });
+    throw new PendingWorldUploadNotFoundError();
+  }
+
+  if (!pendingUpload.objectKey.startsWith(getObjectKeyPrefix(firebaseUid, world.id))) {
     throw new InvalidWorldVersionObjectKeyError();
   }
 
   let objectMetadata: R2ObjectMetadata;
 
   try {
-    objectMetadata = await getObjectMetadata(objectKey);
+    objectMetadata = await getObjectMetadata(pendingUpload.objectKey);
   } catch (error) {
     if (error instanceof R2ObjectNotFoundError) {
       throw new UploadedObjectNotFoundError();
@@ -167,13 +221,15 @@ export const completeWorldVersionUpload = async ({
     throw error;
   }
 
+  const sizeBytes = Number(pendingUpload.sizeBytes);
+
   if (objectMetadata.contentLength !== undefined && objectMetadata.contentLength !== sizeBytes) {
     throw new UploadedObjectMetadataMismatchError(
       "Uploaded object size does not match sizeBytes.",
     );
   }
 
-  if (objectMetadata.contentType !== undefined && objectMetadata.contentType !== contentType) {
+  if (objectMetadata.contentType !== undefined && objectMetadata.contentType !== pendingUpload.contentType) {
     throw new UploadedObjectMetadataMismatchError(
       "Uploaded object content type does not match contentType.",
     );
@@ -197,10 +253,10 @@ export const completeWorldVersionUpload = async ({
       versionNumber: (latestVersion?.versionNumber ?? 0) + 1,
       status: "UPLOADED",
       r2Bucket: getR2Config().bucketName,
-      r2ObjectKey: objectKey,
-      fileName,
-      contentType,
-      sizeBytes: BigInt(sizeBytes),
+      r2ObjectKey: pendingUpload.objectKey,
+      fileName: pendingUpload.fileName,
+      contentType: pendingUpload.contentType,
+      sizeBytes: pendingUpload.sizeBytes,
       uploadedAt: new Date(),
     },
     select: {
@@ -209,8 +265,13 @@ export const completeWorldVersionUpload = async ({
       fileName: true,
       contentType: true,
       sizeBytes: true,
-      r2ObjectKey: true,
       createdAt: true,
+    },
+  });
+
+  await prisma.pendingWorldUpload.delete({
+    where: {
+      id: pendingUpload.id,
     },
   });
 
@@ -232,7 +293,6 @@ export const listWorldVersions = async (worldId: string, firebaseUid: string) =>
       fileName: true,
       contentType: true,
       sizeBytes: true,
-      r2ObjectKey: true,
       createdAt: true,
     },
   });

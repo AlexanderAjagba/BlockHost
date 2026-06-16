@@ -8,6 +8,22 @@ export interface CreateWorldInput {
   minecraftVersion?: string | null;
 }
 
+export class WorldNameConflictError extends Error {
+  constructor() {
+    super("A world with this name already exists.");
+    this.name = "WorldNameConflictError";
+  }
+}
+
+const isPrismaUniqueConstraintError = (error: unknown): boolean => {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    error.code === "P2002"
+  );
+};
+
 const worldSelect = {
   id: true,
   name: true,
@@ -45,13 +61,21 @@ export const listWorldsForFirebaseUser = async (firebaseUid: string) => {
 export const createWorldForFirebaseUser = async (decodedToken: DecodedIdToken, input: CreateWorldInput) => {
   const user = await upsertUserFromFirebaseToken(decodedToken);
 
-  return prisma.world.create({
-    data: {
-      ownerId: user.id,
-      name: input.name,
-      description: input.description ?? null,
-      minecraftVersion: input.minecraftVersion ?? null,
-    },
-    select: worldSelect,
-  });
+  try {
+    return await prisma.world.create({
+      data: {
+        ownerId: user.id,
+        name: input.name,
+        description: input.description ?? null,
+        minecraftVersion: input.minecraftVersion ?? null,
+      },
+      select: worldSelect,
+    });
+  } catch (error) {
+    if (isPrismaUniqueConstraintError(error)) {
+      throw new WorldNameConflictError();
+    }
+
+    throw error;
+  }
 };

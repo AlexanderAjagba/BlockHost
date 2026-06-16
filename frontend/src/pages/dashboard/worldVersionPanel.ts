@@ -15,6 +15,26 @@ const ALLOWED_ZIP_CONTENT_TYPES = new Set([
   'application/x-zip-compressed',
 ]);
 let selectedWorldId = '';
+let isUploading = false;
+
+type UploadPhase =
+  | 'idle'
+  | 'validating'
+  | 'requesting-url'
+  | 'uploading'
+  | 'completing'
+  | 'complete'
+  | 'failed';
+
+const uploadPhaseText: Record<UploadPhase, string> = {
+  idle: '',
+  validating: 'Validating ZIP backup...',
+  'requesting-url': 'Preparing secure upload session...',
+  uploading: 'Uploading ZIP backup...',
+  completing: 'Finishing backup verification...',
+  complete: 'Backup uploaded.',
+  failed: 'Upload failed.',
+};
 
 const setStatus = (message: string, isError = false) => {
   const status = document.querySelector<HTMLParagraphElement>('#upload-status');
@@ -22,6 +42,84 @@ const setStatus = (message: string, isError = false) => {
 
   status.textContent = message;
   status.className = `mt-3 text-sm ${isError ? 'text-red-200' : 'text-emerald-200'}`;
+};
+
+const setDownloadStatus = (message: string, isError = false) => {
+  const status = document.querySelector<HTMLParagraphElement>('#download-status');
+  if (!status) return;
+
+  status.textContent = message;
+  status.hidden = message.length === 0;
+  status.className = `mt-4 text-sm ${isError ? 'text-red-200' : 'text-emerald-200'}`;
+};
+
+const setUploadPhase = (phase: UploadPhase, detail?: string) => {
+  const message = detail ?? uploadPhaseText[phase];
+  setStatus(message, phase === 'failed');
+};
+
+const setUploadProgress = (percent: number) => {
+  const wrapper = document.querySelector<HTMLDivElement>('#upload-progress-wrap');
+  const bar = document.querySelector<HTMLDivElement>('#upload-progress-bar');
+  if (!wrapper || !bar) return;
+
+  wrapper.hidden = false;
+  bar.style.width = `${Math.max(0, Math.min(100, percent))}%`;
+};
+
+const resetUploadProgress = () => {
+  const wrapper = document.querySelector<HTMLDivElement>('#upload-progress-wrap');
+  const bar = document.querySelector<HTMLDivElement>('#upload-progress-bar');
+  if (!wrapper || !bar) return;
+
+  wrapper.hidden = true;
+  bar.style.width = '0%';
+};
+
+const getFriendlyUploadError = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : '';
+
+  if (
+    message.includes('Choose a ZIP') ||
+    message.includes('must end with .zip') ||
+    message.includes('ZIP content type') ||
+    message.includes('contentType must be')
+  ) {
+    return 'Please choose a .zip Minecraft world backup.';
+  }
+  if (message.includes('2 GB') || message.includes('2147483648')) {
+    return 'This file is too large. Maximum size is 2 GB.';
+  }
+  if (message.includes('empty')) {
+    return 'This ZIP backup is empty. Please choose a valid backup file.';
+  }
+  if (message.includes('Pending upload not found')) {
+    return 'The upload session expired. Please try again.';
+  }
+  if (message.includes('Uploaded object was not found') || message.includes('does not match')) {
+    return 'The uploaded ZIP could not be verified. Please try again.';
+  }
+  if (message.includes('Failed to fetch') || message.includes('Network error')) {
+    return 'Network error. Please check your connection and try again.';
+  }
+  if (message.includes('Upload failed with status')) {
+    return 'The ZIP upload failed. Please try again.';
+  }
+
+  return message || 'Upload failed. Please try again.';
+};
+
+const getFriendlyDownloadError = (error: unknown): string => {
+  const message = error instanceof Error ? error.message : '';
+
+  if (message.includes('World version not found')) {
+    return 'This backup is no longer available.';
+  }
+  if (message.includes('Failed to fetch') || message.includes('Network error')) {
+    return 'Network error. Please check your connection and try again.';
+  }
+
+  return message || 'Could not prepare the download. Please try again.';
 };
 
 const formatDate = (value: string): string => {
@@ -51,6 +149,9 @@ const renderVersions = (versions: WorldVersionMetadata[]) => {
 
   list.replaceChildren();
   emptyState.hidden = versions.length > 0;
+  emptyState.textContent = selectedWorldId
+    ? 'No backups yet for this world. Upload a ZIP backup and it will appear here.'
+    : 'Select a world to view its backups.';
 
   for (const version of versions) {
     const item = document.createElement('article');
@@ -87,14 +188,14 @@ const renderVersions = (versions: WorldVersionMetadata[]) => {
 
       downloadButton.disabled = true;
       downloadButton.textContent = 'Preparing...';
-      setStatus('Requesting secure download URL...');
+      setDownloadStatus('Preparing secure download...');
 
       try {
         const result = await requestWorldVersionDownloadUrl(selectedWorldId, version.id);
-        setStatus(`Download ready: ${result.fileName}`);
+        setDownloadStatus(`Download ready: ${result.fileName}`);
         window.location.href = result.downloadUrl;
       } catch (error) {
-        setStatus(error instanceof Error ? error.message : 'Failed to prepare download.', true);
+        setDownloadStatus(getFriendlyDownloadError(error), true);
       } finally {
         downloadButton.disabled = false;
         downloadButton.textContent = 'Download';
@@ -108,6 +209,7 @@ const renderVersions = (versions: WorldVersionMetadata[]) => {
 const loadVersions = async () => {
   const loading = document.querySelector<HTMLParagraphElement>('#version-loading');
   const errorState = document.querySelector<HTMLParagraphElement>('#version-error');
+  setDownloadStatus('');
 
   if (!selectedWorldId) {
     renderVersions([]);
@@ -121,9 +223,8 @@ const loadVersions = async () => {
   try {
     renderVersions(await listWorldVersions(selectedWorldId));
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Failed to load world versions.';
     if (errorState) {
-      errorState.textContent = message;
+      errorState.textContent = getFriendlyDownloadError(error);
       errorState.hidden = false;
     }
   } finally {
@@ -132,13 +233,13 @@ const loadVersions = async () => {
 };
 
 const validateZipFile = (file: File | undefined): WorldVersionUploadInput => {
-  if (!file) throw new Error('Choose a ZIP file to upload.');
-  if (!file.name.toLowerCase().endsWith('.zip')) throw new Error('The selected file must end with .zip.');
+  if (!file) throw new Error('Please choose a .zip Minecraft world backup.');
+  if (!file.name.toLowerCase().endsWith('.zip')) throw new Error('Please choose a .zip Minecraft world backup.');
   if (file.type && !ALLOWED_ZIP_CONTENT_TYPES.has(file.type)) {
-    throw new Error('The selected file must use a ZIP content type.');
+    throw new Error('Please choose a .zip Minecraft world backup.');
   }
-  if (file.size <= 0) throw new Error('The selected ZIP file is empty.');
-  if (file.size > MAX_WORLD_UPLOAD_SIZE_BYTES) throw new Error('The selected ZIP file must be 2 GB or smaller.');
+  if (file.size <= 0) throw new Error('This ZIP backup is empty. Please choose a valid backup file.');
+  if (file.size > MAX_WORLD_UPLOAD_SIZE_BYTES) throw new Error('This file is too large. Maximum size is 2 GB.');
 
   return {
     fileName: file.name,
@@ -168,7 +269,7 @@ export const updateWorldVersionWorlds = async (worlds: WorldMetadata[]): Promise
   selector.disabled = worlds.length === 0;
 
   const uploadButton = document.querySelector<HTMLButtonElement>('#upload-world-submit');
-  if (uploadButton) uploadButton.disabled = worlds.length === 0;
+  if (uploadButton) uploadButton.disabled = worlds.length === 0 || isUploading;
 
   await loadVersions();
 };
@@ -187,6 +288,10 @@ export const bindWorldVersionPanel = () => {
   form?.addEventListener('submit', async (event) => {
     event.preventDefault();
 
+    if (isUploading) {
+      return;
+    }
+
     if (!selectedWorldId) {
       setStatus('Select a world before uploading.', true);
       return;
@@ -196,41 +301,58 @@ export const bindWorldVersionPanel = () => {
     let input: WorldVersionUploadInput;
 
     try {
+      setUploadPhase('validating');
       input = validateZipFile(file);
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'Invalid ZIP file.', true);
+      setUploadPhase('failed', getFriendlyUploadError(error));
       return;
     }
     if (!file) return;
+
+    isUploading = true;
+    resetUploadProgress();
 
     if (submitButton) {
       submitButton.disabled = true;
       submitButton.textContent = 'Uploading...';
     }
+    if (fileInput) fileInput.disabled = true;
+    if (selector) selector.disabled = true;
 
     try {
-      setStatus('Requesting secure upload URL...');
+      setUploadPhase('requesting-url');
       const signedUpload = await requestWorldVersionUploadUrl(selectedWorldId, input);
 
-      setStatus('Uploading ZIP directly to R2...');
-      await uploadFileToSignedUrl(signedUpload.uploadUrl, file, signedUpload.requiredHeaders);
+      setUploadPhase('uploading', 'Uploading ZIP backup... 0%');
+      await uploadFileToSignedUrl(
+        signedUpload.uploadUrl,
+        file,
+        signedUpload.requiredHeaders,
+        ({ percent }) => {
+          setUploadProgress(percent);
+          setUploadPhase('uploading', `Uploading ZIP backup... ${percent}%`);
+        },
+      );
 
-      setStatus('Verifying upload...');
+      setUploadPhase('completing');
       await completeWorldVersionUpload(selectedWorldId, {
-        ...input,
-        objectKey: signedUpload.objectKey,
+        uploadId: signedUpload.uploadId,
       });
 
       if (fileInput) fileInput.value = '';
-      setStatus('World version uploaded.');
+      setUploadProgress(100);
+      setUploadPhase('complete');
       await loadVersions();
     } catch (error) {
-      setStatus(error instanceof Error ? error.message : 'World version upload failed.', true);
+      setUploadPhase('failed', getFriendlyUploadError(error));
     } finally {
+      isUploading = false;
       if (submitButton) {
-        submitButton.disabled = false;
+        submitButton.disabled = !selectedWorldId;
         submitButton.textContent = 'Upload ZIP';
       }
+      if (fileInput) fileInput.disabled = false;
+      if (selector) selector.disabled = !selectedWorldId;
     }
   });
 };

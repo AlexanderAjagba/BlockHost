@@ -21,7 +21,8 @@ model User {
   displayName String?
   photoUrl    String?
 
-  worlds World[]
+  worlds         World[]
+  pendingUploads PendingWorldUpload[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -40,8 +41,9 @@ model World {
   minecraftVersion String?
   lastPlayedAt     DateTime?
 
-  owner    User           @relation(fields: [ownerId], references: [id], onDelete: Cascade)
-  versions WorldVersion[]
+  owner          User                 @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  versions       WorldVersion[]
+  pendingUploads PendingWorldUpload[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -83,4 +85,25 @@ model WorldVersion {
   @@index([worldId])
   @@index([status])
   @@index([createdAt])
+}
+
+model PendingWorldUpload {
+  id      String @id @default(cuid())
+  userId  String
+  worldId String
+
+  user  User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  world World @relation(fields: [worldId], references: [id], onDelete: Cascade)
+
+  objectKey   String @unique
+  fileName    String
+  contentType String
+  sizeBytes   BigInt
+
+  createdAt DateTime @default(now())
+  expiresAt DateTime
+
+  @@index([userId])
+  @@index([worldId])
+  @@index([expiresAt])
 }

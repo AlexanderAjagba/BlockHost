@@ -34,6 +34,9 @@ Thumbs.db
 # Build and cache outputs
 coverage/
 *.tsbuildinfo
+/backend/dist/
+/frontend/dist/
+/dist/
 
 # Environment files (local configs)
 /.env
@@ -41,3 +44,9 @@ coverage/
 /.env.development.local
 /.env.production.local
 /.env.test.local
+
+# Secret credential files
+*serviceAccount*.json
+*service-account*.json
+*firebase-adminsdk*.json
+*ServiceAccount*.json

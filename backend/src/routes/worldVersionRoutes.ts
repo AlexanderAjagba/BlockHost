@@ -5,19 +5,16 @@ import {
   createWorldVersionDownloadUrl,
   InvalidWorldVersionObjectKeyError,
   listWorldVersions,
+  PendingWorldUploadNotFoundError,
   UploadedObjectMetadataMismatchError,
   UploadedObjectNotFoundError,
   WorldNotFoundError,
   WorldVersionNotFoundError,
   type CompleteWorldVersionInput,
 } from "../services/worldVersionService";
+import { getErrorLogSummary } from "../utils/logging";
 
 const router = Router({ mergeParams: true });
-const MAX_WORLD_UPLOAD_SIZE_BYTES = 2 * 1024 * 1024 * 1024;
-const ALLOWED_ZIP_CONTENT_TYPES = new Set([
-  "application/zip",
-  "application/x-zip-compressed",
-]);
 
 const isPlainObject = (value: unknown): value is Record<string, unknown> => {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -40,33 +37,16 @@ const parseCompleteBody = (
     throw new Error("Request body must be a JSON object.");
   }
 
-  const { objectKey, fileName, contentType, sizeBytes } = body;
+  const { uploadId } = body;
 
-  if (typeof objectKey !== "string" || objectKey.length === 0) {
-    throw new Error("objectKey is required and must be a non-empty string.");
-  }
-  if (typeof fileName !== "string" || fileName.trim().length === 0) {
-    throw new Error("fileName is required and must be a non-empty string.");
-  }
-  if (typeof contentType !== "string" || !ALLOWED_ZIP_CONTENT_TYPES.has(contentType)) {
-    throw new Error("contentType must be application/zip or application/x-zip-compressed.");
-  }
-  if (
-    typeof sizeBytes !== "number" ||
-    !Number.isSafeInteger(sizeBytes) ||
-    sizeBytes <= 0 ||
-    sizeBytes > MAX_WORLD_UPLOAD_SIZE_BYTES
-  ) {
-    throw new Error(`sizeBytes must be a positive integer no larger than ${MAX_WORLD_UPLOAD_SIZE_BYTES}.`);
+  if (typeof uploadId !== "string" || uploadId.length === 0) {
+    throw new Error("uploadId is required and must be a non-empty string.");
   }
 
   return {
     worldId,
     firebaseUid,
-    objectKey,
-    fileName: fileName.trim(),
-    contentType,
-    sizeBytes,
+    uploadId,
   };
 };
 
@@ -80,6 +60,9 @@ const handleServiceError = (error: unknown, operation: string): { status: number
   if (error instanceof InvalidWorldVersionObjectKeyError) {
     return { status: 400, message: error.message };
   }
+  if (error instanceof PendingWorldUploadNotFoundError) {
+    return { status: 404, message: error.message };
+  }
   if (error instanceof UploadedObjectNotFoundError) {
     return { status: 404, message: error.message };
   }
@@ -87,8 +70,7 @@ const handleServiceError = (error: unknown, operation: string): { status: number
     return { status: 409, message: error.message };
   }
 
-  const message = error instanceof Error ? error.message : `Unknown ${operation} error.`;
-  console.error(`Failed to ${operation}:`, message);
+  console.error(`Failed to ${operation}:`, getErrorLogSummary(error));
   return { status: 500, message: `Failed to ${operation}.` };
 };
 

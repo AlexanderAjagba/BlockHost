@@ -16,8 +16,8 @@ export interface R2ObjectMetadata {
 }
 
 export class R2ObjectNotFoundError extends Error {
-  constructor(objectKey: string) {
-    super(`R2 object not found: ${objectKey}`);
+  constructor() {
+    super("R2 object not found.");
     this.name = "R2ObjectNotFoundError";
   }
 }
@@ -64,7 +64,7 @@ export const getObjectMetadata = async (objectKey: string): Promise<R2ObjectMeta
         "httpStatusCode" in error.$metadata &&
         error.$metadata.httpStatusCode === 404)
     ) {
-      throw new R2ObjectNotFoundError(objectKey);
+      throw new R2ObjectNotFoundError();
     }
 
     throw error;
